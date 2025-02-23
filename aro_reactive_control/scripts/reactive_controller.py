@@ -8,6 +8,8 @@ import numpy as np  # you probably gonna need this
 from geometry_msgs.msg import Twist, Vector3
 from aro_msgs.msg import SectorDistances
 from std_srvs.srv import SetBool, SetBoolRequest, SetBoolResponse
+from sensor_msgs.msg import LaserScan
+import numpy as np
 
 # TODO HW 01 and HW 02: add necessary imports
 
@@ -19,10 +21,13 @@ class ReactiveController():
         self.initialized = False
 
         # TODO HW 01: register listener for laser scan message
+        self.scan_subscriber = rospy.Subscriber("/scan", LaserScan, queue_size=10, callback=self.scan_cb)
 
         # TODO HW 02:publisher for "/cmd_vel" topic (use arg "latch=True")
+        # self.twist_publisher = rospy.Publisher("/cmd_vel", Twist, latch=True)
 
         # TODO HW 01: register publisher for "/reactive_control/sector_dists" topic
+        self.reactive_publisher = rospy.Publisher("/reactive_control/sector_dists", SectorDistances)
         # publishing minimum distances as message of type aro_msgs/SectorDistances
 
         # TODO HW 02: create proxy for the mission evaluation service and wait till the start service is up
@@ -79,7 +84,13 @@ class ReactiveController():
             return
 
         # TODO HW 01: Implement callback for 2D scan, process and publish required data
-
+        rospy.loginfo(len(msg.ranges))
+        rospy.loginfo(min(msg.ranges))
+        right = min(msg.ranges[-90:-30])
+        front = min(msg.ranges[-30:] + msg.ranges[:30])
+        left = min(msg.ranges[30:90])
+        response = SectorDistances(distance_front=front, distance_left=left, distance_right=right)
+        self.reactive_publisher.publish(response)
         # TODO HW 02: Add robot control based on received scan
 
 
