@@ -62,9 +62,9 @@ class ReactiveController():
         if self.active:
             if self.activation_time == 0:
                 self.activation_time = event.clock.secs
-            if event.clock.secs - self.activation_time > 40:
-                resp = self.evaluate_missin_service()
-                self.active = False
+            # if event.clock.secs - self.activation_time > 40:
+            #     resp = self.evaluate_missin_service()
+            #     self.active = False
         # TODO HW 02: Check that the active time had elapsed and send the mission evaluation request
 
 
@@ -109,9 +109,11 @@ class ReactiveController():
         # TODO HW 02: Add robot control based on received scan
         if self.active:
             vel = 0.2
-            vel = min((front - 0.1)*0.5, 0.5)
-            ang = max(vel * 4, 0.5)
-            if front > 1:
+            vel = min((front - 0.1)*0.8, 0.8)
+            ang = (1.2 + abs(vel))
+            if abs(ang) < 0.1:
+                ang= 0.1
+            if front > 0.6:
                 self.apply_control_inputs(vel, 0)
             elif left > right:
                 self.apply_control_inputs(vel, ang)

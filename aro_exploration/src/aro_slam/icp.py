@@ -132,34 +132,47 @@ def absolute_orientation(p: np.ndarray, q: np.ndarray, domain=AbsorientDomain.SE
     # TODO HW 3: Implement absolute orientation for both SE2 and SE3 domains (follow the FIXME markers).
 
     # STEP 1: Center the points in p and q.
-    p_centered = np.zeros_like(p)  # FIXME corresponds to p' from lectures
-    q_centered = np.zeros_like(q)  # FIXME corresponds to q' from lectures
-
-
+    # p_centered = np.zeros_like(p)  # FIXME corresponds to p' from lectures
+    # q_centered = np.zeros_like(q)  # FIXME corresponds to q' from lectures
+    p_c = p - np.mean(p, axis=1)[np.newaxis].T
+    q_c = q - np.mean(q, axis=1)[np.newaxis].T
+    if domain == AbsorientDomain.SE2:
+        pass
+        H = p_c@q_c.T
+        theta = np.arctan((H[0, 1] - H[1, 0]) / (H[0, 0] + H[1, 1]))
+        R = np.array([[np.cos(theta), -np.sin(theta), 0],
+                      [np.sin(theta), np.cos(theta), 0],
+                      [0, 0, 1]])
+    elif domain == AbsorientDomain.SE3:
+        H = p_c@q_c.T
+        U, S, V = np.linalg.svd(H, full_matrices=True)
+        R = V.T@U.T
     # STEP 2: Compute optimal rotation R (directly from theta for SE2, or using SVD for SE3).
     # The rotation R^* is the minimizer of \sum_i ||R * p'[:, i] - q'[:, i]||^2 .
     # Hint: use https://numpy.org/doc/stable/reference/generated/numpy.linalg.svd.html for SE3.
     # Notice: np.linalg.svd() returns H = U * diag(s) * V, not U * diag(s) * V'.
-    R = np.eye(3)  # FIXME
 
 
     # Sometimes SVD returns a reflection matrix instead of rotation
     if np.isclose(np.linalg.det(R), -1.0):
         # FIXME in SE3 case, this is wrong. You should instead negate the last column of V when det(R) is -1
-        R[:, 2] = -R[:, 2]
-
+        # R[:, 2] = -R[:, 2]
+        # V[:, 2] = -V[:, 2]
+        V[2, :] = -V[2, :]
+        R = V.T @ U.T
     if not np.isclose(np.linalg.det(R), 1.0):
         raise ValueError("Rotation R, R'*R = I, det(R) = 1, could not be found.")
 
     # STEP 3: Finally, apply the formula to compute t from known R.
     # t^* = \argmin_t ||R^* * p~ + t − q~||^2 = q~ − R^* * p~
-    t = np.zeros((3, 1))  # FIXME
+    # t = np.zeros((3, 1))  # FIXME
+    t = np.mean(q, axis=1) - R@np.mean(p, axis=1)
 
 
     # STEP 4: Construct the final transform
     T = np.eye(4)
     T[:-1, :-1] = R
-    T[:-1, -1:] = t
+    T[:-1, -1] = t
 
     return T
 
@@ -262,21 +275,28 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
     for iter in range(max_iters):
         # TODO HW 3: Transform source points p_struct using last known T to align with reference points.
         # Hint: use imported function transform()
-
+        p_transformed = position(transform(T, p_struct))
+        pass
 
         # STEP 2: Solve nearest neighbors.
         # TODO HW 3: Find correspondences (Nearest Neighbors Search).
+        dist, idxs = q_index.query(p_transformed, k=1)
         # Find distances between source and reference point clouds and corresponding indexes.
         # Hint: use https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.cKDTree.query.html .
         # For point-to-plane loss, create the virtual q^ points and recompute distances from those.
+        q_corr = q[idxs]
+        if loss == Loss.point_to_plane:
+            q_transformed = p_transformed - (q_normal.T*np.sum(q_normal * (p_transformed - q_corr), axis=1)).T
+        else:
+            q_transformed = q_corr
 
         # Distances of points from p to their nearest neighbors in q_index. Don't forget that point-to-plane computes
         # the distances differently.
-        dists = np.zeros(len(p_struct))  # FIXME
+        # dists = np.zeros(len(p_struct))  # FIXME
+        dists = np.linalg.norm(p_transformed - q_corr, axis=1)
         # Indices of nearest neighbors in q_index, correspondences c(i).
         c = np.random.randint(len(q_struct), size=p_struct.shape)  # FIXME
-
-
+        c = idxs
 
         # STEP 3: Outlier rejection by median thresholding.
         # Construct the set of inliers (median filter, already implemented here).
@@ -297,12 +317,14 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
         # STEP 4: Stop if inlier error does not change much for some time.
         # TODO HW 3: Stop the ICP loop when the inliers error does not change much (call `break` when converged)
         # Array inl_errs contains a history of errors, so look for changes in there.
+        # if inl_errs[-1]*0.99 < dists[inl].mean() and iter > max_iters/2:
+        #     break
 
 
         # STEP 5: Solve absolute orientation for inliers.
         p_inl = p[inl]
-        q_inl = q[c[inl]]  # FIXME Change q_inl to the virtual points q^ for point-to-plane loss
-
+        # q_inl = q[c[inl]]  # FIXME Change q_inl to the virtual points q^ for point-to-plane loss
+        q_inl = q_transformed[inl]
 
         # Use the inlier points with found correspondences to compute updated T (already implemented here).
         try:
@@ -379,8 +401,11 @@ def update_map(q_struct: Optional[np.ndarray], q_index: cKDTree, p_struct_aligne
         # Look at the aligned points from p_struct_aligned and concatenate them to the old map q_struct such that
         # new points are not close to any old map point.
         p = position(p_struct_aligned)
-        new_q_struct = p_struct_aligned  # FIXME new_q_struct should be the concatenation of new points and old map
-        num_new_points = np.ones(q_struct.shape, dtype=bool).sum()  # FIXME this should be the number of added points
+        dist, idx = q_index.query(p)
+        new_p_points = p_struct_aligned[idx[np.where(dist > min_dist)[0]]]
+        new_q_struct = np.hstack([q_struct, new_p_points])  # FIXME new_q_struct should be the concatenation of new points and old map
+        # num_new_points = np.ones(q_struct.shape, dtype=bool).sum()  # FIXME this should be the number of added points
+        num_new_points = len(new_p_points)  # FIXME this should be the number of added points
 
 
     new_q_index = cKDTree(position(new_q_struct))
