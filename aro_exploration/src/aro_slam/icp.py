@@ -286,7 +286,7 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
         # For point-to-plane loss, create the virtual q^ points and recompute distances from those.
         q_corr = q[idxs]
         if loss == Loss.point_to_plane:
-            q_transformed = p_transformed - (q_normal.T*np.sum(q_normal * (p_transformed - q_corr), axis=1)).T
+            q_transformed = p_transformed - (q_normal[idxs].T*np.sum(q_normal[idxs] * (p_transformed - q_corr), axis=1)).T
         else:
             q_transformed = q_corr
 
@@ -295,7 +295,7 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
         # dists = np.zeros(len(p_struct))  # FIXME
         dists = np.linalg.norm(p_transformed - q_corr, axis=1)
         # Indices of nearest neighbors in q_index, correspondences c(i).
-        c = np.random.randint(len(q_struct), size=p_struct.shape)  # FIXME
+        # c = np.random.randint(len(q_struct), size=p_struct.shape)  # FIXME
         c = idxs
 
         # STEP 3: Outlier rejection by median thresholding.
