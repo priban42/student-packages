@@ -461,14 +461,14 @@ class FactorGraph:
         :return: Residuals for the relative pose measurement factor (Numpy array 3xN).
         """
         x2 = x2 if len(x2.shape) == 2 else x2[:, np.newaxis]
+        # x, x2 in the world coordinate frame
 
         # TODO HW 4: compute the residual of relative pose measurement z and difference of poses x2 and x
         # Basically, the residual is w2r(x2, x) - z . The application of cost to the residual is provided to make it
         # efficient. In the residual, you will want to use function angular_signed_distance() to compute differences
         # of angles.
-        res_z = np.zeros_like(x)  # FIXME The residual
-
-
+        # res_z = np.zeros_like(x)  # FIXME The residual
+        res_z = (w2r(x2, x) - z)
         res_z[2, :] = normalize_angle_symmetric(res_z[2, :])
 
         # The einsum() expression multiplies each column of res_z with a corresponding 3x3 submatrix from cost
