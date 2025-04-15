@@ -26,20 +26,36 @@ import random
 
 np.set_printoptions(precision=3)
 
+def angle_diff(a, b):
+    diff = a - b
+    # Wrap the result to be within [-pi, pi]
+    return (diff + np.pi) % (2 * np.pi) - np.pi
+
+def point_in_line(p, l1, l2):
+    a = l2 - l1
+    a = a/np.linalg.norm(l2 - l1)
+    b = l2 - p
+    b = b/np.linalg.norm(l2 - l1)
+    s = np.matmul(a, b)
+    if s > 1 or s < 0:
+        return False
+    return True
+
 class PathFollower(object):
     def __init__(self):
         self.map_frame = rospy.get_param('~map_frame', 'icp_map')
         self.odom_frame = rospy.get_param('~odom_frame', 'odom')  # No-wait frame
         self.robot_frame = rospy.get_param('~robot_frame', 'base_footprint')  # base_footprint for simulation
-        self.control_freq = rospy.get_param('~control_freq', 2.0)  # control loop frequency (Hz)
+        self.control_freq = rospy.get_param('~control_freq', 10.0)  # control loop frequency (Hz)
         assert 1.0 < self.control_freq <= 10.0
         # allowed distance from goal to be supposed reached
         self.goal_reached_dist = rospy.get_param('~goal_reached_dist', 0.2)
         # maximum distance from a path start to enable start of path following
         self.max_path_dist = rospy.get_param('~max_path_dist', 4.0)
-        self.max_velocity = rospy.get_param('~max_velocity', 0.20)  # maximum allowed velocity (m/s)
-        self.max_angular_rate = rospy.get_param('~max_angular_rate', 0.5)  # maximum allowed angular rate (rad/s)
+        self.max_velocity = rospy.get_param('~max_velocity', 0.60)  # maximum allowed velocity (m/s)
+        self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.5)  # maximum allowed angular rate (rad/s)
         self.look_ahead = rospy.get_param('~look_ahead_dist', 1.00)  # look ahead distance for pure pursuit (m)
+        self.initial_alignment = False
         # type of applied control_law approach PID/pure_pursuit
         self.control_law = rospy.get_param('~control_law', "pure_pursuit")
         assert self.control_law in ('PID', 'pure_pursuit')
@@ -146,8 +162,22 @@ class PathFollower(object):
         """
 
         # TODO: Find local goal (lookahead point) on current path
-
-        local_goal = self.path[self.path_index][:2]  # TODO: replace by your code
+        max_i = self.path_index
+        for i in range(self.path_index, min(self.path_index+3, len(self.path) - 1)):
+            intersections = get_circ_line_intersect(self.path[i], self.path[i+1], pose, 0.5)
+            intersections = np.array(intersections).real
+            if len(intersections) > 0:
+                min_idx = np.argmin(np.linalg.norm(intersections - self.path[i+1, :2], axis=1))
+                if not point_in_line(intersections[min_idx], self.path[i, :2], self.path[i+1, :2]):
+                    candidate = self.path[i+1, :2]
+                else:
+                    candidate = intersections[min_idx]
+                if (np.linalg.norm(candidate - pose[:2]) < 0.5) or i == self.path_index:
+                    intersection = candidate
+                    max_i = i
+        self.path_index = max_i
+        # local_goal = self.path[self.path_index][:2]  # TODO: replace by your code
+        local_goal = np.array(intersection)  # TODO: replace by your code
 
         return local_goal
 
@@ -281,9 +311,14 @@ class PathFollower(object):
             lookahead_point_dist = np.linalg.norm(lookahead_point_dir)
 
             goal_reached = False  # TODO: replace by your code
+            print(f"dist to end:{np.linalg.norm(pose[:2] - self.path[-1, :2]):.03f}, {self.path_index} > {self.path.shape[0]-2}")
+            if np.linalg.norm(pose[:2] - self.path[-1, :2]) < self.goal_reached_dist and self.path_index >= self.path.shape[0]-2:
+                goal_reached = True
+                print("goal_reached")
 
             # Clear path and stop if the goal has been reached.
             if goal_reached:
+                self.initial_alignment = False
                 rospy.loginfo('Goal reached: %.2f m from robot (<= %.2f m) in %.2f s.',
                               lookahead_point_dist, self.goal_reached_dist, (rospy.Time.now() - self.path_received_time).to_sec())
 
@@ -314,8 +349,28 @@ class PathFollower(object):
                 return
 
             # TODO: apply control law to produce control inputs
-            angular_rate = -0.5 + random.random()  # TODO: replace by your code
-            velocity = 0.1 * random.random()  # TODO: replace by your code
+            # angular_rate = -0.5 + random.random()  # TODO: replace by your code
+            # velocity = 0.1 * random.random()  # TODO: replace by your code
+            # angular_rate = 0.2
+            # angular_rate = np.arctan2(lookahead_point_dir[0], lookahead_point_dir[1]) - pose[2]
+            angle = np.arctan2(lookahead_point_dir[1], lookahead_point_dir[0])
+            ang_diff = angle_diff(angle, pose[2])
+            angular_rate = 1.5*ang_diff
+            # velocity = 0.2*(1 + np.pi - min(abs(angular_rate), np.pi))
+            velocity = 0.3
+            if abs(ang_diff) > np.pi*0.7:
+                velocity = 0.01
+            if abs(ang_diff) < np.pi*0.1:
+                self.initial_alignment = True
+            if not self.initial_alignment:
+                velocity = 0.01
+
+            # print(f"angle:{np.rad2deg(angle):.03f}, pose[2]:{np.rad2deg(pose[2]):.03f} ang_rate:{np.rad2deg(angular_rate):.03f}")
+            # print(f"{angular_rate=}")
+            if goal_reached:
+                velocity = 0
+                angular_rate = 0
+
 
 
             # apply limits on angular rate and linear velocity

@@ -276,7 +276,6 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
         # TODO HW 3: Transform source points p_struct using last known T to align with reference points.
         # Hint: use imported function transform()
         p_transformed = position(transform(T, p_struct))
-        pass
 
         # STEP 2: Solve nearest neighbors.
         # TODO HW 3: Find correspondences (Nearest Neighbors Search).
@@ -293,7 +292,7 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
         # Distances of points from p to their nearest neighbors in q_index. Don't forget that point-to-plane computes
         # the distances differently.
         # dists = np.zeros(len(p_struct))  # FIXME
-        dists = np.linalg.norm(p_transformed - q_corr, axis=1)
+        dists = np.linalg.norm(p_transformed - q_transformed, axis=1)
         # Indices of nearest neighbors in q_index, correspondences c(i).
         # c = np.random.randint(len(q_struct), size=p_struct.shape)  # FIXME
         c = idxs

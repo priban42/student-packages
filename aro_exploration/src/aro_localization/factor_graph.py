@@ -468,9 +468,12 @@ class FactorGraph:
         # efficient. In the residual, you will want to use function angular_signed_distance() to compute differences
         # of angles.
         # res_z = np.zeros_like(x)  # FIXME The residual
+        # a = np.array([[np.cos(-x[2])*(x2[0]-x[0]) - np.sin(-x[2])*(x2[1]-x[1])],[np.sin(-x[2])*(x2[0]-x[0]) + np.cos(-x[2])*(x2[1]-x[1])], [x2[2]-x[2]]])
+        # b = w2r(x2, x)
+
         res_z = (w2r(x2, x) - z)
         res_z[2, :] = normalize_angle_symmetric(res_z[2, :])
-
+        # res_z = res_z**2
         # The einsum() expression multiplies each column of res_z with a corresponding 3x3 submatrix from cost
         res_z = np.einsum('ijk,ji->ki', cost, res_z)  # apply cost
 
@@ -505,8 +508,25 @@ class FactorGraph:
         # This will create a stack of N 3x3 matrices, each of which has its last row equal to (0, 0, 1).
         J = np.zeros((x.shape[0], x.shape[0], x.shape[1]))  # FIXME Jacobian w.r.t. x[t]
         J1 = np.zeros((x.shape[0], x.shape[0], x.shape[1]))  # FIXME Jacobian w.r.t x[t+1] or mr
+        J[0, 0, :] = -c
+        J[0, 1, :] = -s
+        J[0, 2, :] = -s*(x2[0, :]-x[0, :]) + c*(x2[1, :]-x[1, :])
+        J[1, 0, :] = s
+        J[1, 1, :] = -c
+        J[1, 2, :] = -c*(x2[0, :]-x[0, :]) - s*(x2[1, :]-x[1, :])
+        J[2, 0, :] = zeros
+        J[2, 1, :] = zeros
+        J[2, 2, :] = -ones
 
-
+        J1[0, 0, :] = c
+        J1[0, 1, :] = s
+        J1[0, 2, :] = zeros
+        J1[1, 0, :] = -s
+        J1[1, 1, :] = c
+        J1[1, 2, :] = zeros
+        J1[2, 0, :] = zeros
+        J1[2, 1, :] = zeros
+        J1[2, 2, :] = ones
 
         # Multiply by cost matrices. The einsum basically takes the 3x3 cost matrix and the 3x3 Jacobian submatrix
         # and matrix-multiplies them, for each of the N items in the stack.
