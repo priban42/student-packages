@@ -5,8 +5,16 @@ from nav_msgs.msg import MapMetaData
 def map_to_grid_coordinates(map_pos: np.ndarray, grid_info: MapMetaData) -> np.ndarray:
     """ convert the input position to the discrete coordinates of a corresponding grid cell """
     # map_pos is (2,) numpy array specifying a continuous position in /icp_map frame
-    grid_pos = np.array([0, 0])
 
+    t = np.array([grid_info.origin.position.x, grid_info.origin.position.y])
+    theta = grid_info.origin.orientation.z
+    R = np.array([
+        [np.cos(theta), -np.sin(theta)],
+        [np.sin(theta),  np.cos(theta)]
+    ])
+    grid_pos = R@(map_pos-t)/grid_info.resolution
+    grid_pos = (grid_pos + 0.5).astype(int)
+    # grid_pos = grid_pos.astype(int)
     # TODO implement the conversion, don't forget the grid can be both translated and rotated
 
     # TODO use the grid origin pose (pose of grid's bottom left corner in /icp_map frame) and cell resolution from grid_info
@@ -22,7 +30,14 @@ def map_to_grid_coordinates(map_pos: np.ndarray, grid_info: MapMetaData) -> np.n
 def grid_to_map_coordinates(grid_pos: np.ndarray, grid_info: MapMetaData) -> np.ndarray:
     """ convert grid cell coordinates to a position in the /icp_map frame """
     # grid_pos is (2,) numpy array of [cell_x, cell_y] specifying a cell index in the grid's x and y directions
-    map_pos = np.array([0, 0])
+
+    t = np.array([grid_info.origin.position.x, grid_info.origin.position.y])
+    theta = grid_info.origin.orientation.z
+    R = np.array([
+        [np.cos(theta), -np.sin(theta)],
+        [np.sin(theta),  np.cos(theta)]
+    ])
+    map_pos = t + R@grid_pos*grid_info.resolution
 
     # TODO implement the conversion, don't forget the grid can be both translated and rotated
 
@@ -31,7 +46,6 @@ def grid_to_map_coordinates(grid_pos: np.ndarray, grid_info: MapMetaData) -> np.
     # TODO return a numpy array of [x, y] specifying a position in /icp_map frame
 
     # TODO the output position should correspond to the center of the input cell
-
 
     return map_pos
 

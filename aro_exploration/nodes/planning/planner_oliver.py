@@ -4,7 +4,6 @@ from __future__ import absolute_import, division, print_function
 import rospy
 import numpy as np
 from queue import PriorityQueue
-import itertools
 from typing import List
 from scipy.ndimage import grey_dilation
 from nav_msgs.msg import OccupancyGrid, MapMetaData, Path
@@ -14,10 +13,23 @@ from aro_msgs.srv import PlanPath, PlanPathRequest, PlanPathResponse
 import tf2_ros
 from aro_exploration.utils import map_to_grid_coordinates, grid_to_map_coordinates, get_circular_dilation_footprint
 
-
 """
 Here are imports that you will most likely need. However, you may wish to remove or add your own import.
 """
+
+
+def neighbors(pos):
+    diffs = [-1, 0, 1]
+    x, y = pos
+    for dx in diffs:
+        for dy in diffs:
+            if dx == 0 and dy == 0:
+                continue  # well, we are where we were :D
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                if not inflated_grid[ny, nx]:
+                    yield (nx, ny)
+
 
 class PathPlanner:
     def __init__(self):
@@ -34,7 +46,7 @@ class PathPlanner:
 
         self.map_frame = rospy.get_param("~map_frame", "icp_map")
         self.robot_frame = rospy.get_param("~robot_frame", "base_footprint")
-        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.3))
+        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.6))
         self.occupancy_threshold = int(rospy.get_param("~occupancy_threshold", 25))
 
         # You may wish to listen to the transformations of the robot
@@ -59,9 +71,6 @@ class PathPlanner:
         response = self.plan_path(request)
         self.publish_path(response.path)
         return response
-    @staticmethod
-    def hash_np(arr, gap=10000):
-        return np.sum((arr + 500)*(gap**np.arange(arr.shape[0])))
 
     def plan_path(self, request: PlanPathRequest) -> PlanPathResponse:
         """ Plan and return path from the requrested start position to the requested goal """
@@ -73,8 +82,9 @@ class PathPlanner:
         # Visualize start and goal
         self.publish_start_and_goal_vis(request.start, request.goal)
 
-        # check that start and goal positions are inside the grid. 
-        if start_position[0] < 0 or start_position[1] < 0 or start_position[0] >= self.grid.shape[1] or start_position[1] >= self.grid.shape[0]:
+        # check that start and goal positions are inside the grid.
+        if start_position[0] < 0 or start_position[1] < 0 or start_position[0] >= self.grid.shape[1] or start_position[
+            1] >= self.grid.shape[0]:
             rospy.logwarn(
                 "WARNING: start grid position is outside the grid. [cell_x,cell_y]=[{:f},{:f}], grid shape [w={:f},h={:f}]. "
                 "Returning an empty trajectory.".format(
@@ -82,7 +92,8 @@ class PathPlanner:
             response = PlanPathResponse([])
             return response
 
-        if goal_position[0] < 0 or goal_position[1] < 0 or goal_position[0] >= self.grid.shape[1] or goal_position[1] >= self.grid.shape[0]:
+        if goal_position[0] < 0 or goal_position[1] < 0 or goal_position[0] >= self.grid.shape[1] or goal_position[1] >= \
+                self.grid.shape[0]:
             rospy.logwarn(
                 "WARNING: goal grid position is outside the grid. [cell_x,cell_y]=[{:f},{:f}], grid shape [w={:f},h={:f}]. "
                 "Returning an empty trajectory.".format(
@@ -92,118 +103,108 @@ class PathPlanner:
 
         path = []
         dilation_footprint = get_circular_dilation_footprint(self.robot_diameter, self.grid_resolution)
-        # dilation_footprint_wide = get_circular_dilation_footprint(self.robot_diameter, self.grid_resolution)
-        dilation_footprint_wide = dilation_footprint
-        # print(f"{dilation_footprint.shape=}")
-        # print(f"{dilation_footprint_wide.shape=}")
-        # print(f"{dilation_footprint_wide.shape=}")
-        # print(f"{goal_position[1] - dilation_footprint_wide.shape[1] // 2}:{goal_position[1] + (dilation_footprint_wide.shape[1] + 1) // 2}")
-        # print(f"{goal_position[0] - dilation_footprint_wide.shape[0] // 2}:{goal_position[0] + (dilation_footprint_wide.shape[0] + 1) // 2}")
-        # print(f"{(1-dilation_footprint_wide.astype(int))=}")
-        # print(f"{dilation_footprint_wide.shape=}")
-
-        dilated_grid = np.copy(self.grid)
-        dilated_grid[dilated_grid != 0] = -1
-        dilated_grid = -grey_dilation(-dilated_grid, footprint=dilation_footprint)
-        # print(f"{dilated_grid.shape=}")
-        # print(f"{(dilated_grid[goal_position[1] - dilation_footprint_wide.shape[1] // 2:goal_position[1] + (dilation_footprint_wide.shape[1] + 1) // 2,goal_position[0] - dilation_footprint_wide.shape[0] // 2:goal_position[0] + (dilation_footprint_wide.shape[0] + 1) // 2]).shape=}")
-        # print(f"{(dilated_grid[start_position[1] - dilation_footprint_wide.shape[1] // 2:start_position[1] + (dilation_footprint_wide.shape[1] + 1) // 2,start_position[0] - dilation_footprint_wide.shape[0] // 2:start_position[0] + (dilation_footprint_wide.shape[0] + 1) // 2]).shape=}")
-
-        dilated_grid[
-        goal_position[1] - dilation_footprint_wide.shape[1] // 2:goal_position[1] + (dilation_footprint_wide.shape[1] + 1) // 2,
-        goal_position[0] - dilation_footprint_wide.shape[0] // 2:goal_position[0] + (dilation_footprint_wide.shape[0] + 1) // 2] *=0#(1-dilation_footprint_wide.astype(int))
-        dilated_grid[
-        start_position[1] - dilation_footprint_wide.shape[1] // 2:start_position[1] + (dilation_footprint_wide.shape[1] + 1) // 2,
-        start_position[0] - dilation_footprint_wide.shape[0] // 2:start_position[0] + (dilation_footprint_wide.shape[0] + 1) // 2] *=0#(1-dilation_footprint_wide.astype(int))
-        current_t = start_position
-        # closed = set()
-        closed = np.zeros((1000, 1000))
-        parents = {}
-        pq = PriorityQueue()
-        counter = itertools.count()
-        pq.put((np.linalg.norm(start_position-goal_position), -1, start_position))
-        # closed.add(self.hash_np(start_position))
-        closed[start_position[0], start_position[1]] = 1
-        parents[self.hash_np(start_position)] = None
-        print(f"planner: planning started")
-        for i in range(100000):
-            # print(f"bp planner loop start {pq.qsize()=}")
-            if i>0 and i%500 == 0:
-                print(f"planner iteration: {i=}")
-            if pq.qsize() == 0:
-                print(f"{pq.qsize()=}")
-                return PlanPathResponse([])
-            cost, _, current_t = pq.get()
-            # print(f"bp planner a: {cost=}, {current_t=}")
-            # print(cost, current_t)
-            if np.alltrue(current_t == goal_position):
-                # print("bp planner b")
-                break
-            # print("bp planner 1:")
-            for x in [-1, 0, 1]:
-                # print("bp planner c:")
-                for y in [-1, 0, 1]:
-                    # print("bp planner d:")
-                    if not ( x == 0 and y == 0):
-                        # print(f"bp planner 2:")
-                        t_diff = np.array([x, y])
-                        # print(f"bp planner 3: {t_diff=}")
-                        next_t = current_t+t_diff
-                        # print(f"bp planner 4: {next_t}")
-                        # if self.hash_np(next_t) not in closed:
-                        if closed[next_t[0], next_t[1]] == 0:
-                            # print("bp planner 5:")
-                            if (dilated_grid[next_t[1], next_t[0]] == 0 and
-                                    dilated_grid[next_t[1], current_t[0]] == 0 and
-                                    dilated_grid[current_t[1], next_t[0]] == 0):
-                                # print("bp planner 6:")
-                                G = cost + np.linalg.norm(t_diff) - np.linalg.norm(goal_position - current_t)
-                                H = np.linalg.norm(goal_position - next_t)
-                                pq.put((G+H, next(counter), next_t))
-                                parents[self.hash_np(next_t)] = current_t
-                                # print("bp planner 7:")
-                            # print("bp planner 8:")
-                        # closed.add(self.hash_np(next_t))
-                        # print("bp planner 9:")
-                        closed[next_t[0], next_t[1]] = 1
-                        # print("bp planner 10:")
-                    # print("bp planner 11:")
-                # print("bp planner 12:")
-            # print("bp planner 13:")
-        # print("bp planner 14")
-        if not np.alltrue(current_t == goal_position):
-            print("planner: not np.alltrue(current_t == goal_position), returning PlanPathResponse([])")
-            return PlanPathResponse([])
-        print("planner: exploring iterations done")
 
         # TODO: Copy the occupancy grid into some temporary variable and inflate the obstacles. Use the kernel from get_circular_dilation_footprint()
-
         # TODO: Make sure you take into account unknown grid tiles as non-traversable and also inflate those.
+        inflated_grid = np.copy(self.grid)
+        inflated_grid = np.where(inflated_grid == -1, self.occupancy_threshold + 1,
+                                 inflated_grid)  # unknown as obstacles
+        # inflated_grid = np.where(inflated_grid > self.occupancy_threshold, self.occupancy_threshold+1, 0)
+        inflated_grid = grey_dilation(inflated_grid, footprint=dilation_footprint)
+        inflated_grid = inflated_grid > self.occupancy_threshold
 
-        # TODO: Compute the path using A* and a euclidean distance heuristic. You can move diagonally, but check the safety of the 4 cells 
+        inflated_grid[start_position[1], start_position[0]] = False  # TODO: dilate also around the start position
+
+        if inflated_grid[start_position[1], start_position[0]] == True:
+            rospy.logwarn("Warning: we are starting in a obstacle. Returning an empty trajectory.")
+            return PlanPathResponse([])
+
+        # TODO: Compute the path using A* and a euclidean distance heuristic. You can move diagonally, but check the safety of the 4 cells
+        # TODO: Hint: utilize look-up grids for bools and cost values, storing visited points in list is SLOW. Also consider using an ordered queue (e.g. PriorityQueue)
+        height, width = inflated_grid.shape
+        cost_grid = np.full((height, width), np.inf)
+        visited = np.full((height, width), False)
+        came_from = {}
+
+        # def neighbours(pos):
+        #     x, y = pos
+        #     diffs = [-1, 0, 1]
+        #     for dx in diffs:
+        #         for dy in diffs:
+        #             if dx == 0 and dy == 0:
+        #                 continue
+        #             nx = x + dx
+        #             ny = y + dy
+        #             if 0 <= nx < width and 0 <= ny < height:
+        #                 if not inflated_grid[nx, ny]:
+        #                     step_cost = np.linalg.norm(np.array([dx, dy])) * self.grid_resolution
+        #                     yield (nx, ny), step_cost
+        def neighbours(pos):
+            ret = []
+            x, y = pos
+            diffs = [-1, 0, 1]
+            for dx in diffs:
+                for dy in diffs:
+                    if dx == 0 and dy == 0:
+                        continue
+                    nx = x + dx
+                    ny = y + dy
+                    if 0 <= nx < width and 0 <= ny < height:
+                        if not inflated_grid[ny, nx]:
+                            step_cost = np.linalg.norm(np.array([dx, dy])) * self.grid_resolution
+                            ret.append((nx, ny), step_cost)
+            return ret
+
+        def heuristic(a, b):
+            return np.linalg.norm(np.array(a) - np.array(b))
+
+        frontier = PriorityQueue()
+        frontier.put((0, tuple(start_position)))
+        cost_grid[start_position[1], start_position[0]] = 0
+
+        goal_reached = False
+
+        while not frontier.empty():
+            _, current = frontier.get()
+            # rospy.loginfo("Current position: {}".format(current))
+            if visited[current[1], current[0]]:
+                continue
+            visited[current[1], current[0]] = True
+            if current[1] == goal_position[1] and current[0] == goal_position[0]:
+                goal_reached = True
+                break
+            for next_pos, step_cost in neighbours(current):
+
+                if inflated_grid[next_pos[1], next_pos[0]]:
+                    continue
+                # rospy.loginfo("Checking next position: {}".format(next_pos))
+                new_cost = cost_grid[current[1], current[0]] + step_cost
+                if new_cost < cost_grid[next_pos[1], next_pos[0]]:
+                    cost_grid[next_pos[1], next_pos[0]] = new_cost
+                    priority = new_cost + heuristic(next_pos, goal_position)
+                    frontier.put((priority, tuple(next_pos)))
+                    came_from[tuple(next_pos)] = current
+                    # rospy.loginfo("Adding to frontier: {}, cost {}".format(next_pos, new_cost))
+
+        if not goal_reached:
+            rospy.logwarn("No path found, we tried everything :(..")
+            return PlanPathResponse([])
 
         # TODO: Grid tiles could and should be explored repeatedly with updated cost.
 
-        # TODO: Hint: utilize look-up grids for bools and cost values, storing visited points in list is SLOW. Also consider using an ordered queue (e.g. PriorityQueue)
-
         # TODO: Submitting badly optimized code can lead to failed evaluations during semestral work simulation.
-        i = 0
-        while True:
-            path.append(current_t)
-            current_t = parents[self.hash_np(current_t)]
-            if current_t is None:
-                break
-            if i > 1000:
-                print("planner: path too long")
-                path = [None]
-                break
-            i += 1
-        print("planner: path generated")
-        path = path[::-1]
-        # Convert the path (list of grid cell coordinates) into a service response with a list of /icp_map frame poses 
+        path = []
+        curr = tuple(goal_position)
+        while curr != tuple(start_position):
+            path.append(np.array([curr[0], curr[1]]))
+            curr = came_from[curr]
+        path.append(np.array([start_position[0], start_position[1]]))
+        path.reverse()
+        # Convert the path (list of grid cell coordinates) into a service response with a list of /icp_map frame poses
         real_path = [Pose2D(pos[0], pos[1], 0) for pos in
                      [grid_to_map_coordinates(waypoint, self.grid_info) for waypoint in path]]
         response = PlanPathResponse(real_path)
+
         return response
 
     def extract_grid(self, msg):
@@ -263,7 +264,7 @@ class PathPlanner:
         m_goal.action = 0
         m_goal.pose = Pose()
         m_goal.pose.orientation = Quaternion(0.0, 0.0, 0.0, 1.0)
-        m_goal.pose.position = Point(goal.x, goal.y, 0.0) 
+        m_goal.pose.position = Point(goal.x, goal.y, 0.0)
         # m_start.points.append(Point(start.x, start.y, 0.0))
         m_goal.color.r = 0.0
         m_goal.color.g = 1.0

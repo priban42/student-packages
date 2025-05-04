@@ -11,7 +11,7 @@ from aro_msgs.srv import GenerateFrontier, GenerateFrontierRequest, GenerateFron
 from aro_msgs.srv import PlanPath, PlanPathRequest, PlanPathResponse
 from typing import Optional
 from aro_exploration.utils import map_to_grid_coordinates, grid_to_map_coordinates, get_circular_dilation_footprint
-
+from scipy.ndimage import label
 
 invalid_pose = Pose2D(np.nan, np.nan, np.nan)
 
@@ -24,9 +24,9 @@ class Frontier:
 
     def get_cell_closest_to_center(self):
         grid_pos = np.array([0,0])
-
+        mean = np.mean(self.cell_positions, axis=0)
         # TODO: select the frontier cell that is closest to the mean position of this frontier's cells and return its grid coordinates
-
+        grid_pos = self.cell_positions[np.argmin(np.linalg.norm(self.cell_positions - mean, axis=1)), :]
         return grid_pos 
 
 
@@ -34,7 +34,7 @@ class FrontierExplorer:
     def __init__(self):
         self.map_frame = rospy.get_param("~map_frame", "icp_map")
         self.robot_frame = rospy.get_param("~robot_frame", "base_footprint")
-        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.6))
+        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.3))
         self.min_frontier_size = rospy.get_param("~min_frontier_size", 3)
         self.occupancy_threshold = int(rospy.get_param("~occupancy_threshold", 90))
 
@@ -87,9 +87,49 @@ class FrontierExplorer:
             rospy.logerr("Could not find frontiers because the robot position could not be retrieved!")
             return
         robot_grid_pos = self.robot_grid_position
-        
+
         # get the kernel - a binary mask, corresponding to the robot shape (or larger for more safety), which will be used for inflating obstacles and unknown space
         dilation_footprint = get_circular_dilation_footprint(self.robot_diameter, self.grid_resolution)
+        dilated_grid = np.copy(self.occupancy_grid)
+        dilated_grid_unex = np.copy(self.occupancy_grid)
+        grid = np.copy(self.occupancy_grid)
+        dilated_grid[dilated_grid < self.occupancy_threshold] = 1
+        dilated_grid[dilated_grid >= self.occupancy_threshold] = 0
+        dilated_grid_unex[dilated_grid_unex > -1] = 1
+        dilated_grid_unex[dilated_grid_unex == -1] = 0
+        dilated_grid = -grey_dilation(-dilated_grid, footprint=dilation_footprint)
+        dilated_grid_unex = -grey_dilation(-dilated_grid_unex, footprint=dilation_footprint)
+        grid[dilated_grid == 0] = 1
+        grid[(grid == 0) & (dilated_grid_unex == 0)] = -1
+        frontier_grid = np.zeros_like(grid)
+        explored_grid = np.zeros_like(grid)
+        queue = []
+        for i in range(dilation_footprint.shape[0]):
+            for j in range(dilation_footprint.shape[1]):
+                if dilation_footprint[i, j]:
+                    nx = robot_grid_pos[0] + i - dilation_footprint.shape[1] // 2
+                    ny = robot_grid_pos[1] + j - dilation_footprint.shape[0] // 2
+                    if (0 <= nx < grid.shape[1]) and (0 <= ny < grid.shape[0]):
+                         if grid[ny, nx] == 0:
+                            queue.append(np.array([nx, ny]))
+                            explored_grid[ny, nx] = 1
+        while len(queue) > 0:
+            node = queue.pop(0)
+            for x in [-1, 0, 1]:
+                for y in [-1, 0, 1]:
+                    if explored_grid[node[1]+y, node[0]+x] == 0 and grid[node[1] + y, node[0] + x] == 0:
+                        queue.append(np.array([node[0] + x, node[1]+y]))
+                        explored_grid[node[1]+y, node[0]+x] = 1
+                    if grid[node[1]+y, node[0]+x] == -1:
+                        frontier_grid[node[1], node[0]] = 1
+        pass
+
+        structure = np.ones((3, 3), dtype=int)  # 8-connectivity
+        labeled_array, num_features = label(frontier_grid, structure=structure)
+        for i in range(1, num_features+1):
+            fy, fx = np.where(labeled_array == i)
+            if len(fy) > self.min_frontier_size:
+                self.frontiers.append(Frontier(cell_positions=np.vstack([fx, fy]).T))
 
         # TODO: Copy the occupancy grid into some temporary variable(s) and inflate the obstacles and unknown spaces using 'grey_dilation()'
 
@@ -98,7 +138,7 @@ class FrontierExplorer:
         # TODO: Run the Wavefront Frontier Detection algorithm on the modified occupancy grid - see the presentation slides for details on how to implement it
 
         # TODO: Also treat the cells in the dilation_footprint centered on the starting position as traversable while doing the BFS to avoid finding 0 frontiers when the robot ends up close to obstacles (see courseware for more info on this)
-        
+
         # TODO: At the end, self.frontiers should contain a list of Frontier objects for all the frontiers you find using the WFD algorithm
 
         # Extract all the frontiers' cells and their centers to visualize them
@@ -127,6 +167,8 @@ class FrontierExplorer:
         closest_frontier_center_grid_pos = np.array([0,0])
 
         # TODO: find the frontier center that is closest to the robot
+        frontier_centers = np.array([f.get_cell_closest_to_center() for f in self.frontiers])
+        closest_frontier_center_grid_pos = frontier_centers[np.argmin(np.linalg.norm(frontier_centers - self.robot_grid_position, axis=1))]
 
         # convert from grid coordinates to map coordinates and return service response
         map_x, map_y = grid_to_map_coordinates(closest_frontier_center_grid_pos, self.grid_info)

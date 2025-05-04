@@ -360,9 +360,9 @@ class EvaluatorAction(object):
         self.deviation_pub.publish(Float32(dist))
         self.vel_pub.publish(Float32(feedback.linear_velocity))
         self.ang_rate_pub.publish(Float32(feedback.angular_rate))
-
-        rospy.loginfo_throttle(2.0, 'Received control feedback. Position = [%.2f, %.2f], applied control: vel.= %.2f m/s, ang. r.= %.2f rad/s, lookahead point dist = %.2f m.',
-                               feedback.position.x, feedback.position.y, feedback.linear_velocity, feedback.angular_rate, feedback.error)
+        # hidden log
+        # rospy.loginfo_throttle(2.0, 'Received control feedback. Position = [%.2f, %.2f], applied control: vel.= %.2f m/s, ang. r.= %.2f rad/s, lookahead point dist = %.2f m.',
+        #                        feedback.position.x, feedback.position.y, feedback.linear_velocity, feedback.angular_rate, feedback.error)
 
     def action_done_cb(self, state, result):
         self.current_following_time_end = rospy.Time.now()

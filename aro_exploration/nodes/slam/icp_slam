@@ -222,7 +222,10 @@ class IcpSlam:
                           p_struct.size, self.map_struct.size, age,
                           100.0 * res.inliers.mean() if res.inliers is not None else 0.0,
                           res.mean_inlier_dist, timer() - t)
-
+            print(f"{(res.T is not None)=}")
+            print(f"{(res.mean_inlier_dist is not None)=}")
+            print(f"{(res.inliers is not None)=}")
+            print(f"{(res.inliers.mean() >= self.localized_inlier_ratio)=}")
         return localized, res
 
     # @timing

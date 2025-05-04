@@ -60,7 +60,7 @@ def pose_valid(pose: Pose2D):
 class Explorer(object):
     def __init__(self):
         rospy.loginfo('Initializing explorer.')
-        self.map_frame = rospy.get_param('~map_frame', 'map')
+        self.map_frame = rospy.get_param('~map_frame', 'icp_map')
         self.odom_frame = rospy.get_param('~odom_frame', 'odom')
         self.robot_frame = rospy.get_param('~robot_frame', 'base_footprint')
         self.goal_reached_dist = rospy.get_param('~goal_reached_dist', 0.2)
@@ -73,6 +73,7 @@ class Explorer(object):
         self.current_goal: Optional[Pose2D] = None
         self.current_path: Optional[List[Pose2D]] = None
         self.frontiers_left = False
+        self.finishing_path = False
 
         rospy.loginfo('Initializing services and publishers.')
 
@@ -160,13 +161,32 @@ class Explorer(object):
 
     def get_feasible_goal(self) -> Tuple[Optional[Pose2D], Optional[List[Pose2D]]]:
         rospy.loginfo('Looking for goal.')
-
         # TODO implement the exploration logic
-        goal: Optional[Pose2D] = None
-        path: Optional[List[Pose2D]] = None
+        current_pose = self.get_robot_pose()
+        if self.marker_pose is not None:
+            goal = self.init_pose
+            path = self.plan_path(current_pose, self.init_pose).path
+            self.finishing_path = True
+            return goal, path
+        else:
+            # frontier = self.get_best_value_frontier()
+            try:
+                frontier = self.get_closest_frontier().goal_pose
+            except:
+                print("frontier not found, choosing random spot")
+                frontier = Pose2D(current_pose.x + np.random.rand(1)[0]*0.5, current_pose.y + np.random.rand(1)[0]*0.5, current_pose.theta)
+            print(f"closest frontier:{array(frontier)}")
 
+            goal: Optional[Pose2D] = frontier
+            print("started planning")
+            path: Optional[List[Pose2D]] = self.plan_path(current_pose, frontier).path
+            if len(path) == 0:
+                print("path to frontier not found, choosing random spot")
+                frontier = Pose2D(current_pose.x + np.random.rand(1)[0]*0.5, current_pose.y + np.random.rand(1)[0]*0.5, current_pose.theta)
+                path: Optional[List[Pose2D]] = self.plan_path(current_pose, frontier).path
+            print("done planning")
+            return goal, path
 
-        return goal, path
 
     def update_plan(self, event):
         try:
@@ -177,13 +197,19 @@ class Explorer(object):
 
                 # TODO check whether the marker was found and robot returned to starting pose
                 finished = False
-
-
+                if self.finishing_path:
+                    finished = True
+                rospy.loginfo(f"{self.finishing_path=}, {finished=}, {self.run_mode=}")
                 # Terminate evaluation instance
-                if self.run_mode == 'eval' and finished:
-                    self.timer.shutdown()
-                    req = SetBoolRequest(True)
-                    self.stop_sim(req)
+                # if self.run_mode == 'eval' and finished:
+                if finished:
+                    if self.run_mode == 'eval':
+                        self.timer.shutdown()
+                        req = SetBoolRequest(True)
+                        self.stop_sim(req)
+                    else:
+                        self.timer.shutdown()
+                        rospy.signal_shutdown("Finished task")
 
                 # Find new goal
                 self.current_goal, self.current_path = self.get_feasible_goal()
@@ -215,7 +241,9 @@ class Explorer(object):
             rospy.logerr('Robot pose lookup failed: %s.', ex)
 
     def follow_path_feedback_cb(self, feedback: FollowPathFeedback):
-        rospy.loginfo('Received control feedback, tracking error is: %.2f.', feedback.error)
+        pass
+        # hidden log
+        # rospy.loginfo('Received control feedback, tracking error is: %.2f.', feedback.error)
 
     def follow_path_done_cb(self, state, result: FollowPathResult):
         rospy.loginfo('Control done.')

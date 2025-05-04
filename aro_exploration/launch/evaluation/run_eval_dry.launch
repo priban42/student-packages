@@ -1,0 +1,25 @@
+<launch>
+    <arg name="world" default="aro_easy_2" doc="{aro_easy_1, aro_easy_2, aro_easy_3, aro_eval_1, aro_eval_2}"/>
+    <arg name="run_mode" default="single" doc="{manual, single}"/>
+    <arg name="marker_config" default="2" doc="1-2, gives positions of the markers in the loaded world." />
+    <arg name="time_limit" default="120"/>
+    <arg name="localization_visualize" default="false" />
+    <arg name="rviz" default="true" />
+    <arg name="gui" default="false" />
+    <arg name="record" default="false" />
+    <arg name="record_prefix" default="" />
+    <arg name="ground_truth" default="true" />
+
+    <node name="evaluathor" pkg="aro_exploration" type="run_eval.py" output="screen">
+        <param name="map_name" value="$(arg world)"/>
+        <param name="marker_config" value="$(arg marker_config)"/>
+        <param name="time_limit" value="$(arg time_limit)"/>
+        <param name="run_mode" value="$(arg run_mode)"/>
+        <param name="localization_visualize" value="$(arg localization_visualize)"/>
+        <param name="rviz" value="$(arg rviz)"/>
+        <param name="gui" value="$(arg gui)"/>
+        <param name="record" value="$(arg record)"/>
+        <param name="record_prefix" value="$(arg record_prefix)" if="$(eval len(record_prefix) != 0)"/>
+        <param name="ground_truth" value="$(arg ground_truth)" />
+    </node>
+</launch>

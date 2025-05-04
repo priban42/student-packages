@@ -334,8 +334,10 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
     else:
         # This else is executed only when the for loop did not stop using break. This means the stopping condition has
         # not been met, thus ICP did not converge.
-        logwarn('Max iter. %i: inliers: %.2f, mean dist.: %.3g, max dist: %.3g.',
-                max_iters, inl.mean(), inl_errs[-1], d_max)
+        # hidden log
+        # logwarn('Max iter. %i: inliers: %.2f, mean dist.: %.3g, max dist: %.3g.',
+        #         max_iters, inl.mean(), inl_errs[-1], d_max)
+        pass
 
     # Compute covariance of the alignment (already implemented here).
     # The covariance computation is only valid for point-to-plane losses, but we provide it even for point-to-point
@@ -370,7 +372,8 @@ def icp(p_struct: np.ndarray, q_struct: np.ndarray, q_index: Optional[cKDTree] =
         log = logdebug if inl_errs[0] >= inl_errs[-1] else logwarn
         samples = sample(list(zip(inl_errs, inl_ratios))[::-1], 10)
         samples_str = '; '.join(['%.3g, %.2g' % ir for ir in samples])
-        log('Inl. error, delta, ratio (from last): %s (%i it., %.2f s)', samples_str, iter, timer() - t)
+        # hidden log
+        # log('Inl. error, delta, ratio (from last): %s (%i it., %.2f s)', samples_str, iter, timer() - t)
 
 
 

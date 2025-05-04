@@ -586,7 +586,8 @@ class FactorGraphLocalizationNode(object):
             time_from_previous = det.pose.header.stamp - self.last_marker_stamps[det_id]
             self.last_marker_stamps[det_id] = det.pose.header.stamp
             if self.ignore_spurious_markers and time_from_previous > self.spurious_marker_duration_threshold:
-                rospy.logwarn_throttle(1.0, "Ignoring spurious detection of marker " + str(det_id))
+                # hidden log
+                # rospy.logwarn_throttle(1.0, "Ignoring spurious detection of marker " + str(det_id))
                 continue
 
             # Transform the marker pose from camera frame to body frame.

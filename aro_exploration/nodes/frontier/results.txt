@@ -1,0 +1,11 @@
+[INFO] [1744904654.234369] [/tester]: Test 1:
+[INFO] [1744904654.285296] [/tester]: Incorrect solution - Frontier center [-1.1999999925494194, 0.9500000499188901] received when robot is at [-0.3, 0.7] is too far from reference solution [-0.8, 1.0]
+[INFO] [1744904655.287475] [/tester]: Test 2:
+[INFO] [1744904655.338961] [/tester]: SUCCESS! Frontier center [-1.2499999932944774, -0.6999999746680259] received when robot is at [-0.3, -1.0] is sufficiently close to reference solution [-1.05, -0.9]
+[INFO] [1744904656.341757] [/tester]: Test 3:
+[INFO] [1744904656.395745] [/tester]: SUCCESS! Frontier center [-0.9499999888241291, -1.9499999932944774] received when robot is at [-0.2, -1.7] is sufficiently close to reference solution [-0.65, -1.95]
+[INFO] [1744904657.398426] [/tester]: Test 4:
+[INFO] [1744904657.409669] [/tester]: Incorrect solution - Frontier center [2.550000063329935, 0.2000000387430192] received when robot is at [0.6, 1.7] is too far from reference solution [0.45, 1.75]
+[INFO] [1744904658.412011] [/tester]: Test 5:
+[INFO] [1744904658.462773] [/tester]: Incorrect solution - Frontier center [-1.1999999925494194, 0.9500000499188901] received when robot is at [-0.6, 0.3] is too far from reference solution [-0.775, 1.025]
+[INFO] [1744904658.464633] [/tester]: [EVALUATION] Total evaluation success rate: 2.00 / 5.00

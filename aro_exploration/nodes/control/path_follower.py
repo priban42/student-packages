@@ -59,7 +59,10 @@ class PathFollower(object):
         # type of applied control_law approach PID/pure_pursuit
         self.control_law = rospy.get_param('~control_law', "pure_pursuit")
         assert self.control_law in ('PID', 'pure_pursuit')
-
+        self.current_velocity = 0
+        self.current_angular_velocity = 0
+        self.acceleration = 0.01
+        self.angular_acceleration = 0.6
         self.lock = RLock()
         self.path_msg = None  # FollowPathGoal message
         self.path = None  # n-by-3 path array
@@ -164,7 +167,7 @@ class PathFollower(object):
         # TODO: Find local goal (lookahead point) on current path
         max_i = self.path_index
         for i in range(self.path_index, min(self.path_index+3, len(self.path) - 1)):
-            intersections = get_circ_line_intersect(self.path[i], self.path[i+1], pose, 0.5)
+            intersections = get_circ_line_intersect(self.path[i], self.path[i+1], pose, 0.3)
             intersections = np.array(intersections).real
             if len(intersections) > 0:
                 min_idx = np.argmin(np.linalg.norm(intersections - self.path[i+1, :2], axis=1))
@@ -264,6 +267,9 @@ class PathFollower(object):
                 self.action_server.set_succeeded(FollowPathResult(Pose2D(pose[0], pose[1], 0)), text='Goal reached.')
             return
 
+        goal_reached = False  # TODO: replace by your code
+        spin_done = False
+        spin_angle = None
         # Main control loop.
         while True:
             t = timer()  # save current time
@@ -310,20 +316,22 @@ class PathFollower(object):
             lookahead_point_dir = lookahead_point - pose[:2]
             lookahead_point_dist = np.linalg.norm(lookahead_point_dir)
 
-            goal_reached = False  # TODO: replace by your code
-            print(f"dist to end:{np.linalg.norm(pose[:2] - self.path[-1, :2]):.03f}, {self.path_index} > {self.path.shape[0]-2}")
-            if np.linalg.norm(pose[:2] - self.path[-1, :2]) < self.goal_reached_dist and self.path_index >= self.path.shape[0]-2:
-                goal_reached = True
-                print("goal_reached")
 
+            if not goal_reached and np.linalg.norm(pose[:2] - self.path[-1, :2]) < self.goal_reached_dist and self.path_index >= self.path.shape[0]-2:
+                goal_reached = True
+                spin_angle = pose[2]
+                print("goal_reached")
+            if timer() - t > 3:
+                goal_reached = True
+                print("took too long to reach the goal")
             # Clear path and stop if the goal has been reached.
-            if goal_reached:
+            if spin_done:
                 self.initial_alignment = False
                 rospy.loginfo('Goal reached: %.2f m from robot (<= %.2f m) in %.2f s.',
                               lookahead_point_dist, self.goal_reached_dist, (rospy.Time.now() - self.path_received_time).to_sec())
 
                 # TODO: stop the robot when it reached the goal
-
+                # self.send_velocity_command(0.0, 0.0)
 
                 with self.lock:
                     if self.action_server.is_active():
@@ -353,29 +361,54 @@ class PathFollower(object):
             # velocity = 0.1 * random.random()  # TODO: replace by your code
             # angular_rate = 0.2
             # angular_rate = np.arctan2(lookahead_point_dir[0], lookahead_point_dir[1]) - pose[2]
+            vel_multiplier = 1.4
             angle = np.arctan2(lookahead_point_dir[1], lookahead_point_dir[0])
             ang_diff = angle_diff(angle, pose[2])
-            angular_rate = 1.5*ang_diff
+            new_angular_rate = 1.4*ang_diff
+            dist = np.linalg.norm(pose[:2] - self.path[-1][:2])
+            # print(f"{dist=}")
+            # print(f"{pose=}")
+            # print(f"{self.path[-1]=}")
             # velocity = 0.2*(1 + np.pi - min(abs(angular_rate), np.pi))
-            velocity = 0.3
+            new_velocity = 0.4 - 0.25*max(2.0 - dist, 0)/2.0
             if abs(ang_diff) > np.pi*0.7:
-                velocity = 0.01
+                new_velocity = 0.01
             if abs(ang_diff) < np.pi*0.1:
                 self.initial_alignment = True
             if not self.initial_alignment:
-                velocity = 0.01
+                new_velocity = 0.01
 
             # print(f"angle:{np.rad2deg(angle):.03f}, pose[2]:{np.rad2deg(pose[2]):.03f} ang_rate:{np.rad2deg(angular_rate):.03f}")
             # print(f"{angular_rate=}")
             if goal_reached:
-                velocity = 0
-                angular_rate = 0
+                new_velocity = 0
+                if spin_done:
+                    new_angular_rate = 0
+                else:
+                    # spin_done = True
+                    ang_diff = pose[2] - spin_angle
+                    new_angular_rate = -0.7
+                    # print(f"{ang_diff=}")
+                    # print(f"{angle=}")
+                    # print(f"{spin_angle=}")
+                    if abs(ang_diff) > np.pi*0.9:
+                        spin_done = True
 
 
-
+            if new_velocity - self.current_velocity > 0:
+                velocity = self.current_velocity + np.sign(new_velocity - self.current_velocity)*self.acceleration
+            else:
+                velocity = new_velocity
+            # if new_angular_rate - self.current_angular_velocity > 0:
+            #     angular_rate = self.current_angular_velocity + np.sign(new_angular_rate - self.current_angular_velocity)*self.angular_acceleration*vel_multiplier
+            # else:
+            angular_rate = new_angular_rate
             # apply limits on angular rate and linear velocity
-            angular_rate = np.clip(angular_rate, -self.max_angular_rate, self.max_angular_rate)
-            velocity = np.clip(velocity, 0.0, self.max_velocity)
+            self.current_velocity = velocity
+            self.current_angular_velocity = angular_rate
+
+            angular_rate = np.clip(angular_rate*vel_multiplier, -self.max_angular_rate, self.max_angular_rate)
+            velocity = np.clip(velocity*vel_multiplier, 0.0, self.max_velocity)
 
             # Apply desired velocity and angular rate
             self.send_velocity_command(velocity, angular_rate)

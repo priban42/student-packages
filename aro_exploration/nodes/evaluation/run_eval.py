@@ -41,7 +41,8 @@ class Evaluathor():
 
         self.requestedMap = rospy.get_param("~map_name", "aro_eval_1")  # name of the requested world
         self.requestedMarker = rospy.get_param("~marker_config", 1)
-        self.runMode = rospy.get_param("~run_mode", self.RUN_MANUAL)  # if run o multiple maps, how are the maps being switched
+        # self.runMode = rospy.get_param("~run_mode", self.RUN_MANUAL)  # if run o multiple maps, how are the maps being switched
+        self.runMode = rospy.get_param("~run_mode", self.RUN_AUTO)  # if run o multiple maps, how are the maps being switched
         self.timeLimit = rospy.get_param("~time_limit", 120)  # go to next map after X seconds if run mode is auto
         self.localization_visualize = rospy.get_param("~localization_visualize", False)
         self.rviz = rospy.get_param("~rviz", True)
