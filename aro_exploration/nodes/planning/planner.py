@@ -34,7 +34,7 @@ class PathPlanner:
 
         self.map_frame = rospy.get_param("~map_frame", "icp_map")
         self.robot_frame = rospy.get_param("~robot_frame", "base_footprint")
-        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.3))
+        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.6))
         self.occupancy_threshold = int(rospy.get_param("~occupancy_threshold", 25))
 
         # You may wish to listen to the transformations of the robot

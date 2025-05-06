@@ -34,7 +34,7 @@ class FrontierExplorer:
     def __init__(self):
         self.map_frame = rospy.get_param("~map_frame", "icp_map")
         self.robot_frame = rospy.get_param("~robot_frame", "base_footprint")
-        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.3))
+        self.robot_diameter = float(rospy.get_param("~robot_diameter", 0.6))
         self.min_frontier_size = rospy.get_param("~min_frontier_size", 3)
         self.occupancy_threshold = int(rospy.get_param("~occupancy_threshold", 90))
 
