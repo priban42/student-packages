@@ -160,9 +160,10 @@ class Explorer(object):
         return pose
 
     def get_feasible_goal(self) -> Tuple[Optional[Pose2D], Optional[List[Pose2D]]]:
-        rospy.loginfo('Looking for goal.')
+        rospy.loginfo('Looking for goal...')
         # TODO implement the exploration logic
         current_pose = self.get_robot_pose()
+        rospy.loginfo(f"{current_pose}=")
         if self.marker_pose is not None:
             goal = self.init_pose
             path = self.plan_path(current_pose, self.init_pose).path
